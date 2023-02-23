@@ -11,13 +11,13 @@
 class WebServer {
  private:
   bool closed_;
+  int listen_fd_;
   static const int kMaxFd = 65536;
 
  private:
-  int listen_fd_;
   uint32_t event_type_;
   std::unique_ptr<Epoller> epoller_;
-  //std::unique_ptr<ThreadPool> threadpool_;
+  // std::unique_ptr<ThreadPool> threadpool_;
   unordered_map<int, HttpConnection> connections_;
 
  private:
