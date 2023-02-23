@@ -116,8 +116,28 @@ void WebServer::SendError(int fd, const char *info) {
 /* 添加新客户 */
 void WebServer::AddClient(int fd, sockaddr_in addr) {
   assert(fd > 0);
-  connections_[fd].init(fd, addr);
+  // 初始化
+  connections_[fd].Init(fd, addr);
   /*
   定时器占位
   */
+  // EPOLLIN指示可读时触发事件，可读意味着客户发来了新请求
+  epoller_->AddFd(fd, EPOLLIN | event_type_);
+  SetSocketNonBlocking(fd);
+  LOG_INFO("Client[%d] connected.", connections_[fd].GetFd());
+}
+
+/* 默认情况下socket是blocking的，等待accept、recv、send、connect一系列函数执行完才能返回
+可使用fcntl函数将socket设置为非阻塞，这样函数就可以立即返回了，不用等待满足条件才返回，提高并发效率
+F_SETFD：设置文件描述词标志
+F_GETFD：读取文件描述词标志。
+F_GETFL：读取文件状态标志
+F_SETFL：设置文件状态标志
+这几个参数的区别仍不太了解
+*/
+void WebServer::SetSocketNonBlocking(int fd) {
+  assert(fd > 0);
+  // return fcntl(fd, F_SETFL, fcntl(fd, F_GETFD, 0) | O_NONBLOCK);
+  // 据说这才是正确用法，但两种结果都一样
+  return fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
 }

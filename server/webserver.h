@@ -31,6 +31,7 @@ class WebServer {
   void AddClient(int fd, sockaddr_in addr);
   void Process(HttpConnection *conn);
   void DealListen();
+  void SetSocketNonBlocking(int fd);
 
  public:
   WebServer();
