@@ -26,64 +26,33 @@ void WebServer::Start() {
       } else if (events_type &
                  (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {  // 异常事件
         // 处理异常并关闭连接
-        DealWithException(&connections_[fd]);
+        assert(connections_.count(fd) > 0);
+        DealException(&connections_[fd]);
       } else if (events_type & EPOLLIN) {
         // 处理请求
-        DealWithRead(&connections_[fd]);
+        assert(connections_.count(fd) > 0);
+        DealRead(&connections_[fd]);
       } else if (events_type & EPOLLOUT) {
         // 处理响应
-        DealWithWrite(&connections_[fd]);
+        assert(connections_.count(fd) > 0);
+        DealWrite(&connections_[fd]);
       } else {
-        ;
+        LOG_ERROR("Unexpected event");
       }
     }
   }
 }
 
-// void WebServer::DealWithRead(HttpConnection *conn) {
-//   // ExtentTime_(client);
-//   threadpool_->AddTask(std::bind(&WebServer::Read, this, conn));
-// }
-
-// void WebServer::DealWithWrite(HttpConnection *conn) {
-//   threadpool_->AddTask(std::bind(&WebServer::Write, this, conn));
-// }
-
-void WebServer::DealWithException(HttpConnection *conn) {}
-
-void WebServer::Read(HttpConnection *conn) {
+void WebServer::CloseConnection(HttpConnection *conn) {
   assert(conn);
-  int ret = -1;
-  int readErrno = 0;
-  ret = conn->read(&readErrno);
-  // 没能读取到数据
-  if (ret <= 0 && readErrno != EAGAIN) {
-    DealWithException(conn);
-    return;
-  }
-  Process(conn);
+  LOG_INFO("Client[%d] quit!", conn->GetFd());
+  // 删除对应的文件描述符
+  epoller_->DelFd(conn->GetFd());
+  // 清理其他连接信息
+  conn->Close();
 }
 
-void WebServer::Write(HttpConnection *conn) {
-  assert(conn);
-  int ret = -1;
-  int __errno = 0;
-  ret = conn->write(&__errno);
-  // 传输完成
-  if (conn->ToWriteBytes() == 0) {
-    if (conn->IsKeepAlive()) {
-      Process(conn);
-      return;
-    }
-  } else if (ret < 0) {
-    // 继续传输
-    if (__errno == EAGAIN) {
-      epoller_->ModFd(conn->GetFd(), event_type_ | EPOLLOUT);
-      return;
-    }
-  }
-  CloseConnection(conn);
-}
+void WebServer::DealException(HttpConnection *conn) { CloseConnection(conn); }
 
 /* 处理用户新请求 */
 void WebServer::DealListen() {
@@ -140,4 +109,59 @@ void WebServer::SetSocketNonBlocking(int fd) {
   // return fcntl(fd, F_SETFL, fcntl(fd, F_GETFD, 0) | O_NONBLOCK);
   // 据说这才是正确用法，但两种结果都一样
   return fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+}
+
+void WebServer::read(HttpConnection *conn) {
+  assert(conn);
+  int ret = -1;
+  int read_errno = 0;
+  ret = conn->read(&read_errno);
+  // 没能读取到数据，关闭连接
+  if (ret <= 0 && read_errno != EAGAIN) {
+    CloseConnection(conn);
+    return;
+  }
+  ModClientFdEvent(conn);
+}
+
+void WebServer::write(HttpConnection *conn) {
+  assert(conn);
+  int ret = -1;
+  int write_errno = 0;
+  ret = conn->write(&write_errno);
+  // 传输完成
+  if (conn->ToWriteBytes() == 0) {
+    if (conn->IsKeepAlive()) {
+      ModClientFdEvent(conn);
+      return;
+    }
+  } else if (ret < 0) {
+    // 继续传输
+    if (write_errno == EAGAIN) {
+      epoller_->ModFd(conn->GetFd(), event_type_ | EPOLLOUT);
+      return;
+    }
+  }
+  CloseConnection(conn);
+}
+
+void WebServer::DealRead(HttpConnection *conn) {
+  /* 定时器占位
+   */
+  threadpool_->AddTask(std::bind(&WebServer::read, this, conn));
+}
+
+void WebServer::DealWrite(HttpConnection *conn) {
+  /* 定时器占位
+   */
+  threadpool_->AddTask(std::bind(&WebServer::write, this, conn));
+}
+
+/* 修改客户描述符事件类型 */
+void WebServer::ModClientFdEvent(HttpConnection *conn) {
+  if (conn->Process()) {
+    epoller_->ModFd(conn->GetFd(), event_type_ | EPOLLOUT);
+  } else {
+    epoller_->ModFd(conn->GetFd(), event_type_ | EPOLLIN);
+  }
 }

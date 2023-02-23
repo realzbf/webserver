@@ -33,7 +33,7 @@ class HttpConnection {
   ssize_t write(int *__errno);
   static std::atomic<int> gUsersNum;
 
- private:
+ public:
   void Close();
 
  public:
