@@ -1,37 +1,28 @@
 #include <pthread.h>
 
+#include <condition_variable>
 #include <deque>
+#include <functional>
+#include <mutex>
 
-#include "sqlpool.h"
+#include "sqlconnpool.h"
 
-template <typename T>
 class ThreadPool {
  public:
-  ThreadPool(connection_pool db_pool, int __thread_number, int __max_requests);
+  ThreadPool(size_t thread_cnt = 8);
+  template <typename T>
+  void AddTask(T&& task);
+  ThreadPool(ThreadPool&&) = default;
   ~ThreadPool();
 
-  // 添加新请求
-  bool append(T *);
-
  private:
-  // 工作线程
-  void *ThreadPool<T>::worker(void *);
-  void run();
+  /* 线程共享结构 */
+  struct Pool {
+    std::mutex mtx;                           // 互斥访问
+    std::condition_variable cond;             // 同步工作
+    bool closed;                              // 标记线程池关闭状态
+    std::queue<std::function<void()>> tasks;  // 任务队列
+  };
 
- private:
-  // 线程数
-  int thread_number;
-  // 最大请求数
-  int max_requests;
-  bool stop;
-
-  // 请求队列，互斥访问
-  std::deque<T *> requests_queue;
-  Locker queue_locker;
-  Semaphore tasks;
-
-  // 数据库池
-  connection_pool *db_pool;
-  // 线程数组
-  pthread_t *threads;
+  std::shared_ptr<Pool> pool_;
 };

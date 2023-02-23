@@ -1,78 +1,72 @@
 #include "threadpool.h"
 
-template <typename T>
-ThreadPool<T>::ThreadPool(connection_pool __db_pool, int __thread_number,
-                          int __max_requests)
-    : db_pool(__db_pool),
-      thread_number(thread_number),
-      max_requests(__max_requests) {
-  if (max_requests <= 0 || max_requests <= 0) {
-    throw std::exception();
-  }
-  threads = new pthread_t[thread_number];
-  if (!threads) {
-    throw std::exception();
-  }
+#include <iostream>
 
-  // 给每个线程分配工作
-  for (int i = 0; i < thread_number; i++) {
-    // 创建失败则销毁线程，抛出异常
-    if (pthread_create(threads + i, NULL, worker, this) != 0) {
-      delete[] threads;
-      throw std::exception();
-    }
-
-    // 分离线程，后续不再单独回收
-    if (pthread_detach(threads[i])) {
-      delete[] threads;
-      throw std::exception();
-    }
+/* 初始化每一个工作线程 */
+ThreadPool::ThreadPool(size_t thread_cnt) : pool_(std::make_shared<Pool>()) {
+  assert(thread_cnt > 0);
+  // 启动每一个工作线程
+  for (size_t i = 0; i < thread_cnt; i++) {
+    std::thread([&] {
+      std::unique_lock<std::mutex> locker(pool_->mtx);
+      while (true) {
+        // 如果有新任务
+        if (!pool_->tasks.empty()) {
+          /* 左值和右值
+          左值是表达式结束后依然存在的持久对象（在内存中有确定的位置，可以取地址）
+          右值是表达式结束后不再存在的临时对象（在内存中的位置不确定，不可取地址）
+          move函数可以将左值转为右值，可以避免拷贝，从而提高性能
+          */
+          auto task = std::move(pool_->tasks.front());
+          pool_->tasks.pop();
+          // 取到任务就可以解锁了
+          locker.unlock();
+          // 执行任务
+          task();
+          locker.lock();
+        } else if (pool_->closed) {  // 线程池被关闭，退出循环
+          break;
+        } else {  // 任务队列为空，等待新任务
+          pool_->cond.wait(locker);
+        }
+      }
+    }).detach();
   }
 }
 
-template <typename T>
-bool ThreadPool<T>::append(T *request) {
-  queue_locker.lock();
-
-  // 队列已满
-  if (requests_queue.size() >= max_requests) {
-    queue_locker.unlock();
-    return false;
+/* 析构函数终止所有线程 */
+ThreadPool::~ThreadPool() {
+  if (static_cast<bool>(pool_)) {
+    std::lock_guard<std::mutex> locker(pool_->mtx);
+    pool_->closed = true;
+    pool_->cond.notify_all();
   }
-  requests_queue.push_back(request);
-  queue_locker.unlock();
-
-  // 发出信号，请求处理新任务
-  tasks.post();
 }
 
+/* 添加新任务，task需要可执行，一般用bind函数生成 */
 template <typename T>
-void *ThreadPool<T>::worker(void *arg) {
-  ThreadPool *pool = (ThreadPool *)arg;
-  pool->run();
-  return pool;
+void ThreadPool::AddTask(T&& task) {
+  /* lock_guard在生命周期内一直加锁，结束后自动解锁，即RAII技术，不用担心异常安全问题。
+  lock_guard没有提供构造、析构函数以外的接口，如果想要更灵活，可以使用unique_lock
+   */
+  std::lock_guard<std::mutex> locker(pool_->mtx);
+  /* 需要再学习下左右值 */
+  pool_->tasks.emplace(std::forward<T>(task));
+  /* notify_one只唤醒等待队列中的第一个线程，不存在锁争用，其余线程不会被唤醒
+  notify_all唤醒所有等待队列的线程，存在锁争用。
+  这里唤醒一个工作线程就可以了 */
+  pool_->cond.notify_one();
 }
 
-template <typename T>
-void ThreadPool<T>::run() {
-  while (!stop) {
-    // 等待任务到来
-    tasks.wait();
-
-    queue_locker.lock();
-    // 任务可能已经完成
-    if (requests_queue.empty()) {
-      queue_locker.unlock();
-      continue;
-    }
-    T *request = requests_queue.front();
-    requests_queue.pop_front();
-    queue_locker.unlock();
-
-    if (!request) continue;
-
-    request->mysql = db_pool->getConnection();
-    request->process();
-    db_pool->releaseConnection(request->mysql);
+int main() {
+  ThreadPool threadpool;
+  for (int j = 0; j < 16; j++) {
+    threadpool.AddTask([j = j]() {
+      for (int i = 0; i < 10; i++)
+        std::cout << "therad " << j << " print " << i << std::endl;
+    });
   }
+  // 等所有线程退出后进程才结束
+  pthread_exit(NULL);
+  return 0;
 }

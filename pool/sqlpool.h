@@ -1,1 +1,0 @@
-class connection_pool {};
