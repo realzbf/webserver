@@ -38,4 +38,38 @@ int HttpConnection::GetFd() const { return fd_; };
 /* 关闭连接 */
 void HttpConnection::Close() {}
 
-/* read write process close待实现 */
+bool HttpConnection::Process() {
+  request_.Init();
+  // 没有读取到内容，处理失败
+  if (read_buffer_.GetReadableBytes() <= 0) return false;
+
+  // 读取到内容就可以开始解析了
+  if (request_.parse(read_buffer_)) {
+    LOG_DEBUG("%s", request_.path().c_str());
+    // 解析成功
+    response_.Init(resources_dir, request_.path(), request_.IsKeepAlive(), 200);
+  } else {
+    // 请求内容有误，应返回4xx响应码
+    response_.Init(resources_dir, request_.path(), false, 400);
+  }
+
+  // 开始响应
+  response_.MakeResponse(write_buffer_);
+
+  // 响应头
+  iov_[0].iov_base = const_cast<char*>(write_buffer_.Peek());
+  iov_[0].iov_len = write_buffer_.GetReadableBytes();
+
+  // 响应内容
+  if (response_.FileLen() > 0 && response_.File()) {
+    iov_[1].iov_base = response_.File();
+    iov_[1].iov_len = response_.FileLen();
+    n_iov_ = 2;
+  }
+
+  LOG_DEBUG("Response succeed. Filesize: %d, %d  to %d", response_.FileLen(),
+            n_iov_, ToWriteBytes());
+  return true;
+}
+
+/* read write close待实现 */

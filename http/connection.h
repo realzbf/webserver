@@ -11,6 +11,8 @@
 
 #include "../log/logger.h"
 #include "../utils/buffer.h"
+#include "request.h"
+#include "response.h"
 
 using std::string;
 using std::unordered_map;
@@ -20,9 +22,15 @@ class HttpConnection {
   int fd_;
   struct sockaddr_in addr_;
   bool closed_;
+  static const char *resources_dir;
+
+  struct iovec iov_[2];
+  int n_iov_;
   // 读写缓冲区
   Buffer read_buffer_;
   Buffer write_buffer_;
+  HttpRequest request_;
+  HttpResponse response_;
 
  public:
   HttpConnection();
@@ -40,4 +48,7 @@ class HttpConnection {
   const char *GetIp() const;
   int GetPort() const;
   int GetFd() const;
+
+ private:
+  inline int ToWriteBytes() { return iov_[0].iov_len + iov_[1].iov_len; }
 };
