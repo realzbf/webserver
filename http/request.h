@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <mysql/mysql.h>  //mysql
 
+#include <algorithm>
 #include <regex>
 #include <string>
 #include <unordered_map>
@@ -14,6 +15,25 @@
 #include "../pool/sqlconnpool.h"
 #include "../utils/buffer.h"
 
+using std::string;
+using std::unordered_map;
+using std::unordered_set;
+
+/* HTTP请求结构(以\r\n作为结束字符)
+1. 请求行：
+  请求类型、资源路径、HTTP版本
+2. 请求头部：
+  host：资源所在服务器域名
+  User-Agent：客户端信息
+  Accept：用户代理可处理的媒体类型
+  Accept-Encoding：用户代理可处理的内容编码
+  Accept-Language：用户代理可处理的语言集
+  Content-Type：实现主体的媒体类型
+  Content-Length：实现主体的大小
+  Connection：连接管理，可以是Keep-Alive（后续请求无需重新建立连接，但会占用服务器资源）或close
+3. 空行
+3. 请求数据（主体）
+*/
 class HttpRequest {
  public:
   enum PARSE_STATE {
@@ -38,43 +58,28 @@ class HttpRequest {
   ~HttpRequest() = default;
 
   void Init();
-  bool parse(Buffer& buff);
+  bool Parse(Buffer& buff);
 
-  std::string path() const;
-  std::string& path();
-  std::string method() const;
-  std::string version() const;
-  std::string GetPost(const std::string& key) const;
-  std::string GetPost(const char* key) const;
-
-  bool IsKeepAlive() const;
-
-  /*
-  todo
-  void HttpConn::ParseFormData() {}
-  void HttpConn::ParseJson() {}
-  */
+  inline string& GetPath() { return path_; };
+  inline const string GetPath() const { return path_; };
+  inline const bool IsKeepAlive() const;
 
  private:
-  bool ParseRequestLine_(const std::string& line);
-  void ParseHeader_(const std::string& line);
-  void ParseBody_(const std::string& line);
+  bool ParseRequestLine(const string& line);
+  void ParseHeader(const string& line);
+  void ParseBody(const string& line);
 
-  void ParsePath_();
-  void ParsePost_();
-  void ParseFromUrlencoded_();
-
-  static bool UserVerify(const std::string& name, const std::string& pwd,
-                         bool isLogin);
-
+  // 解析状态
   PARSE_STATE state_;
-  std::string method_, path_, version_, body_;
-  std::unordered_map<std::string, std::string> header_;
-  std::unordered_map<std::string, std::string> post_;
-
-  static const std::unordered_set<std::string> DEFAULT_HTML;
-  static const std::unordered_map<std::string, int> DEFAULT_HTML_TAG;
-  static int ConverHex(char ch);
+  // 请求类型、资源路径、HTTP版本、主体
+  string method_, path_, version_, body_;
+  // 请求头
+  unordered_map<string, string> header_;
+  // post内容
+  unordered_map<string, string> post_;
+  // 可访问的资源路径
+  static const unordered_set<string> kAvaiableHtml;
+  static const unordered_map<string, int> DEFAULT_HTML_TAG;
 };
 
 #endif

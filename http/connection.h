@@ -40,6 +40,7 @@ class HttpConnection {
   ssize_t read(int *__errno);
   ssize_t write(int *__errno);
   static std::atomic<int> gUsersNum;
+  static bool ET;
 
  public:
   void Close();

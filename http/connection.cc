@@ -1,6 +1,7 @@
 #include "connection.h"
 
 std::atomic<int> HttpConnection::gUsersNum = 0;
+bool HttpConnection::ET;
 
 /* 初始化文件描述符、地址信息、关闭状态 */
 HttpConnection::HttpConnection() {
@@ -44,13 +45,14 @@ bool HttpConnection::Process() {
   if (read_buffer_.GetReadableBytes() <= 0) return false;
 
   // 读取到内容就可以开始解析了
-  if (request_.parse(read_buffer_)) {
-    LOG_DEBUG("%s", request_.path().c_str());
+  if (request_.Parse(read_buffer_)) {
+    LOG_DEBUG("%s", request_.GetPath().c_str());
     // 解析成功
-    response_.Init(resources_dir, request_.path(), request_.IsKeepAlive(), 200);
+    response_.Init(resources_dir, request_.GetPath(), request_.IsKeepAlive(),
+                   200);
   } else {
     // 请求内容有误，应返回4xx响应码
-    response_.Init(resources_dir, request_.path(), false, 400);
+    response_.Init(resources_dir, request_.GetPath(), false, 400);
   }
 
   // 开始响应
@@ -61,15 +63,65 @@ bool HttpConnection::Process() {
   iov_[0].iov_len = write_buffer_.GetReadableBytes();
 
   // 响应内容
-  if (response_.FileLen() > 0 && response_.File()) {
-    iov_[1].iov_base = response_.File();
-    iov_[1].iov_len = response_.FileLen();
+  if (response_.GetFileLength() > 0 && response_.GetFile()) {
+    iov_[1].iov_base = response_.GetFile();
+    iov_[1].iov_len = response_.GetFileLength();
     n_iov_ = 2;
   }
 
-  LOG_DEBUG("Response succeed. Filesize: %d, %d  to %d", response_.FileLen(),
-            n_iov_, ToWriteBytes());
+  LOG_DEBUG("Response succeed. Filesize: %d, %d  to %d",
+            response_.GetFileLength(), n_iov_, ToWriteBytes());
   return true;
 }
 
-/* read write close待实现 */
+/* 读取用户发送的请求内容 */
+ssize_t HttpConnection::read(int* __errno) {
+  ssize_t sz = -1;
+  do {
+    sz = read_buffer_.ReadFd(fd_, __errno);
+    if (sz <= 0) {
+      break;
+    }
+  } while (ET);
+  return sz;
+}
+
+ssize_t HttpConnection::write(int* __errno) {
+  ssize_t sz = -1;
+  /* 1. 写入write_buff
+  2. 将write_buff内容转移到客户对应的文件描述符中（本函数做的事）
+  */
+  do {
+    // 聚集写，将iov的所有块写入到fd中，返回写入字节数
+    // 需要手动更新iov_base和iov_len
+    sz = writev(fd_, iov_, n_iov_);
+    // 写入失败
+    if (sz <= 0) {
+      *__errno = errno;
+      break;
+    }
+    // 无可写入内容，传输结束
+    if (iov_[0].iov_len + iov_[1].iov_len == 0) {
+      break;
+    }
+    // 写入字节超出第一块，说明有部分字节写入了第二块
+    else if (static_cast<size_t>(sz) > iov_[0].iov_len) {
+      // 移动首地址到未写入部分
+      iov_[1].iov_base = (uint8_t*)iov_[1].iov_base + (sz - iov_[0].iov_len);
+      // 更新剩余字节数
+      iov_[1].iov_len -= (sz - iov_[0].iov_len);
+      // 第二块写完了第一块一定也写完了
+      if (iov_[0].iov_len) {
+        write_buffer_.Reset();
+        iov_[0].iov_len = 0;
+      }
+    } else {
+      // 第一块还没写完，第二块一定还没开始，所以不用管第二块
+      iov_[0].iov_base = (uint8_t*)iov_[0].iov_base + sz;
+      iov_[0].iov_len -= sz;
+      // 更新写入缓冲区的偏移量
+      write_buffer_.MoveReadPos(sz);
+    }
+  } while (ET || ToWriteBytes() > 10240);
+  return sz;
+}

@@ -11,6 +11,8 @@
 #include "../log/logger.h"
 #include "../utils/buffer.h"
 
+using std::string;
+using std::unordered_map;
 class HttpResponse {
  public:
   HttpResponse();
@@ -20,31 +22,37 @@ class HttpResponse {
             bool isKeepAlive = false, int code = -1);
   void MakeResponse(Buffer& buff);
   void UnmapFile();
-  char* File();
-  size_t FileLen() const;
-  void ErrorContent(Buffer& buff, std::string message);
-  int Code() const { return code_; }
+
+  // 获取状态码
+  inline int GetCode() const { return code_; }
+
+  // 获取文件映射后的内存指针
+  inline char* GetFile() { return mmap_ptr; };
+
+  // 获取文件长度
+  inline size_t GetFileLength() const { return file_stat_.st_size; }
 
  private:
-  void AddStateLine_(Buffer& buff);
-  void AddHeader_(Buffer& buff);
-  void AddContent_(Buffer& buff);
+  void SetErrorHtml();
+  void SetStateLine(Buffer& buff);
+  void SetHeader(Buffer& buff);
+  void SetContent(Buffer& buff);
+  void SetErrorContent(Buffer& buff, string message);
+  std::string GetFileType();
 
-  void ErrorHtml_();
-  std::string GetFileType_();
-
+ private:
   int code_;
-  bool isKeepAlive_;
+  bool keep_alive_;
 
   std::string path_;
-  std::string srcDir_;
+  std::string resources_dir_;
 
-  char* mmFile_;
-  struct stat mmFileStat_;
+  char* mmap_ptr;
+  struct stat file_stat_;
 
-  static const std::unordered_map<std::string, std::string> SUFFIX_TYPE;
-  static const std::unordered_map<int, std::string> CODE_STATUS;
-  static const std::unordered_map<int, std::string> CODE_PATH;
+  static const std::unordered_map<std::string, std::string> kSuffixToType;
+  static const std::unordered_map<int, std::string> kCodeToStatus;
+  static const std::unordered_map<int, std::string> kErrorCodeToPath;
 };
 
 #endif
