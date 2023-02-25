@@ -22,3 +22,35 @@ ssize_t Buffer::ReadFd(int fd, int* __errno) {
   }
   return len;
 }
+
+void Buffer::Append(const char* str, size_t len) {
+  assert(str);
+  EnsureWriteable(len);
+  std::copy(str, str + len, NextWriteable());
+  MoveWritePos(len);
+}
+
+void Buffer::Resize(size_t size) {
+  if (GetWritableBytes() + read_pos_ < size) {
+    buffer_.resize(write_pos_ + size + 1);
+  } else {
+    size_t readable = GetReadableBytes();
+    std::copy(begin() + read_pos_, begin() + write_pos_, begin());
+    read_pos_ = 0;
+    write_pos_ = read_pos_ + readable;
+    assert(readable == GetReadableBytes());
+  }
+}
+
+void Buffer::EnsureWriteable(size_t len) {
+  if (GetWritableBytes() < len) {
+    Resize(len);
+  }
+  assert(GetWritableBytes() >= len);
+}
+
+string Buffer::RetrieveAllToStr() {
+    std::string str(NextReadable(), GetReadableBytes());
+    Reset();
+    return str;
+}

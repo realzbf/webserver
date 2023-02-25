@@ -62,7 +62,7 @@ class HttpRequest {
 
   inline string& GetPath() { return path_; };
   inline const string GetPath() const { return path_; };
-  inline const bool IsKeepAlive() const;
+  bool IsKeepAlive() const;
 
  private:
   bool ParseRequestLine(const string& line);

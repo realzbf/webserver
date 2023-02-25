@@ -1,6 +1,7 @@
 #include "connection.h"
 
-std::atomic<int> HttpConnection::gUsersNum = 0;
+const char* HttpConnection::resources_dir_;
+std::atomic<int> HttpConnection::user_count_;
 bool HttpConnection::ET;
 
 /* 初始化文件描述符、地址信息、关闭状态 */
@@ -15,14 +16,14 @@ HttpConnection::~HttpConnection() { Close(); }
 void HttpConnection::Init(int fd, const sockaddr_in& addr) {
   assert(fd > 0);
   // 线程安全，无需加锁
-  gUsersNum++;
+  user_count_++;
   addr_ = addr;
   fd_ = fd;
-  write_buffer_.RetrieveAll();
-  read_buffer_.RetrieveAll();
+  write_buffer_.Reset();
+  read_buffer_.Reset();
   closed_ = false;
   LOG_INFO("Client[%d](%s: %d) connected, users: %d", fd_, GetIp(), GetPort(),
-           static_cast<int>(gUsersNum));
+           static_cast<int>(user_count_));
 }
 
 /* 获取ip地址，inet_ntoa函数将长整型转为"."分割的ip地址形式
@@ -48,18 +49,18 @@ bool HttpConnection::Process() {
   if (request_.Parse(read_buffer_)) {
     LOG_DEBUG("%s", request_.GetPath().c_str());
     // 解析成功
-    response_.Init(resources_dir, request_.GetPath(), request_.IsKeepAlive(),
+    response_.Init(resources_dir_, request_.GetPath(), request_.IsKeepAlive(),
                    200);
   } else {
     // 请求内容有误，应返回4xx响应码
-    response_.Init(resources_dir, request_.GetPath(), false, 400);
+    response_.Init(resources_dir_, request_.GetPath(), false, 400);
   }
 
   // 开始响应
   response_.MakeResponse(write_buffer_);
 
   // 响应头
-  iov_[0].iov_base = const_cast<char*>(write_buffer_.Peek());
+  iov_[0].iov_base = const_cast<char*>(write_buffer_.NextReadable());
   iov_[0].iov_len = write_buffer_.GetReadableBytes();
 
   // 响应内容

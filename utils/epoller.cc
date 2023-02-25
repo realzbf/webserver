@@ -1,5 +1,13 @@
 #include "epoller.h"
 
+#include <iostream>
+
+Epoller::Epoller(int maxEvent) : epfd_(epoll_create(512)), events_(maxEvent) {
+  assert(epfd_ >= 0 && events_.size() > 0);
+}
+
+Epoller::~Epoller() { close(epfd_); }
+
 /*
 查找就绪事件，timeout为-1时一般为阻塞等待，为0时非阻塞等待，即立即返回结果
 返回0表示超时，返回-1表示出错，并设置errno
@@ -27,7 +35,9 @@ bool Epoller::AddFd(int fd, uint32_t events) {
   epoll_event ev = {0};
   ev.data.fd = fd;
   ev.events = events;
-  return 0 == epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &ev);
+  int ret = epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &ev);
+  std::cout << errno << std::endl;
+  return 0 == ret;
 }
 
 /* 删除事件 */

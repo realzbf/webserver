@@ -22,8 +22,6 @@ class HttpConnection {
   int fd_;
   struct sockaddr_in addr_;
   bool closed_;
-  static const char *resources_dir;
-
   struct iovec iov_[2];
   int n_iov_;
   // 读写缓冲区
@@ -39,8 +37,9 @@ class HttpConnection {
   bool Process();
   ssize_t read(int *__errno);
   ssize_t write(int *__errno);
-  static std::atomic<int> gUsersNum;
   static bool ET;
+  static const char *resources_dir_;
+  static std::atomic<int> user_count_;
 
  public:
   void Close();
@@ -49,7 +48,6 @@ class HttpConnection {
   const char *GetIp() const;
   int GetPort() const;
   int GetFd() const;
-
- private:
   inline int ToWriteBytes() { return iov_[0].iov_len + iov_[1].iov_len; }
+  inline bool IsKeepAlive() const { return request_.IsKeepAlive(); }
 };

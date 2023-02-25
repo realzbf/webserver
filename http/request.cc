@@ -22,7 +22,7 @@ bool HttpRequest::Parse(Buffer& buff) {
   while (buff.GetReadableBytes() > 0 && state_ != FINISH) {
     // 未读的区间是read_pos到write_pos这一段
     const char* line_end = std::search(
-        buff.NextReadable(), buff.NextWriteable(), kCrlf.begin(), kCrlf.end());
+        buff.NextReadable(), buff.NextWriteableConst(), kCrlf.cbegin(), kCrlf.cend());
     // 取一行
     string line(buff.NextReadable(), line_end);
     // 根据当前状态匹配解析
@@ -88,7 +88,7 @@ void HttpRequest::ParseHeader(const string& line) {
 }
 
 /* 判断是否持久连接 */
-const bool HttpRequest::IsKeepAlive() const {
+bool HttpRequest::IsKeepAlive() const {
   if (header_.count("Connection") > 0) {
     return header_.find("Connection")->second == "keep-alive" &&
            version_ == "1.1";

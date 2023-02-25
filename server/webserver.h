@@ -1,6 +1,8 @@
 #ifndef WEBSERVER_H
 #define WEBSERVER_H
 
+#include <fcntl.h>
+
 #include <functional>
 #include <unordered_map>
 
@@ -12,11 +14,15 @@
 class WebServer {
  private:
   bool closed_;
+  bool use_linger_;
   int listen_fd_;
   static const int kMaxFd = 65536;
+  int port_;
+  int timeout_ms_;
+  char *resources_dir_;
 
  private:
-  uint32_t event_type_;
+  uint32_t listen_event_type_, conn_event_type_;
   std::unique_ptr<Epoller> epoller_;
   std::unique_ptr<ThreadPool> threadpool_;
   std::unordered_map<int, HttpConnection> connections_;
@@ -32,10 +38,15 @@ class WebServer {
   void AddClient(int fd, sockaddr_in addr);
   void ModClientFdEvent(HttpConnection *conn);
   void DealListen();
-  void SetSocketNonBlocking(int fd);
+  void InitEventType(int mode);
+  int SetSocketNonBlocking(int fd);
+  bool InitListenSocket();
 
  public:
-  WebServer();
+  WebServer(int port, int trig_mode, int timeout_ms, bool use_linger_,
+            int n_thread, bool log, int log_level, int log_queue_size);
+
+  ~WebServer();
   void Start();
 };
 

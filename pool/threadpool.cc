@@ -43,22 +43,7 @@ ThreadPool::~ThreadPool() {
   }
 }
 
-/* 添加新任务，task需要可执行，一般用bind函数生成 */
-template <typename T>
-void ThreadPool::AddTask(T&& task) {
-  /* lock_guard在生命周期内一直加锁，结束后自动解锁，即RAII技术，不用担心异常安全问题。
-  lock_guard没有提供构造、析构函数以外的接口，如果想要更灵活，可以使用unique_lock
-   */
-  std::lock_guard<std::mutex> locker(pool_->mtx);
-  /* 需要再学习下左右值 */
-  pool_->tasks.emplace(std::forward<T>(task));
-  /* notify_one只唤醒等待队列中的第一个线程，不存在锁争用，其余线程不会被唤醒
-  notify_all唤醒所有等待队列的线程，存在锁争用。
-  这里唤醒一个工作线程就可以了 */
-  pool_->cond.notify_one();
-}
-
-int main() {
+int main_threadpool() {
   ThreadPool threadpool;
   for (int j = 0; j < 16; j++) {
     threadpool.AddTask([j = j]() {

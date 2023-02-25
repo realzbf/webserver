@@ -1,5 +1,59 @@
 #include "webserver.h"
 
+WebServer::WebServer(int port, int trig_mode, int timeout_ms, bool use_linger,
+                     int n_thread, bool log, int log_level, int log_queue_size)
+    : port_(port),
+      timeout_ms_(timeout_ms),
+      use_linger_(use_linger),
+      closed_(false),
+      threadpool_(new ThreadPool(n_thread)),
+      epoller_(new Epoller()) {
+  resources_dir_ = getcwd(nullptr, 256);
+  strncat(resources_dir_, "/resources/", 16);
+  HttpConnection::user_count_ = 0;
+  HttpConnection::resources_dir_ = resources_dir_;
+
+  InitEventType(trig_mode);
+
+  if (!InitListenSocket()) {
+    closed_ = true;
+  }
+  if (log) {
+    Log::Instance()->Init(log_level, "./log", ".log", log_queue_size);
+    if (closed_) {
+      LOG_ERROR("========== Server init error!==========");
+    } else {
+      LOG_INFO("========== Server init ==========");
+    }
+  }
+}
+
+WebServer::~WebServer() {}
+
+void WebServer::InitEventType(int mode) {
+  listen_event_type_ = EPOLLRDHUP;
+  conn_event_type_ = EPOLLONESHOT | EPOLLRDHUP;
+  switch (mode) {
+    case 0:
+      break;
+    case 1:
+      conn_event_type_ |= EPOLLET;
+      break;
+    case 2:
+      listen_event_type_ |= EPOLLET;
+      break;
+    case 3:
+      listen_event_type_ |= EPOLLET;
+      conn_event_type_ |= EPOLLET;
+      break;
+    default:
+      listen_event_type_ |= EPOLLET;
+      conn_event_type_ |= EPOLLET;
+      break;
+  }
+  HttpConnection::ET = (conn_event_type_ & EPOLLET);
+}
+
 void WebServer::Start() {
   int timeout_ms = -1;  // 阻塞等待
 
@@ -69,7 +123,7 @@ void WebServer::DealListen() {
       return;
     }
     AddClient(fd, addr);
-  } while (event_type_ && EPOLLET);  // 边缘模式需要一次性处理完
+  } while (listen_event_type_ && EPOLLET);  // 边缘模式需要一次性处理完
 }
 
 /* 给客户发送错误信息 */
@@ -91,7 +145,7 @@ void WebServer::AddClient(int fd, sockaddr_in addr) {
   定时器占位
   */
   // EPOLLIN指示可读时触发事件，可读意味着客户发来了新请求
-  epoller_->AddFd(fd, EPOLLIN | event_type_);
+  epoller_->AddFd(fd, EPOLLIN | conn_event_type_);
   SetSocketNonBlocking(fd);
   LOG_INFO("Client[%d] connected.", connections_[fd].GetFd());
 }
@@ -104,7 +158,7 @@ F_GETFL：读取文件状态标志
 F_SETFL：设置文件状态标志
 这几个参数的区别仍不太了解
 */
-void WebServer::SetSocketNonBlocking(int fd) {
+int WebServer::SetSocketNonBlocking(int fd) {
   assert(fd > 0);
   // return fcntl(fd, F_SETFL, fcntl(fd, F_GETFD, 0) | O_NONBLOCK);
   // 据说这才是正确用法，但两种结果都一样
@@ -138,7 +192,7 @@ void WebServer::write(HttpConnection *conn) {
   } else if (ret < 0) {
     // 继续传输
     if (write_errno == EAGAIN) {
-      epoller_->ModFd(conn->GetFd(), event_type_ | EPOLLOUT);
+      epoller_->ModFd(conn->GetFd(), conn_event_type_ | EPOLLOUT);
       return;
     }
   }
@@ -157,11 +211,81 @@ void WebServer::DealWrite(HttpConnection *conn) {
   threadpool_->AddTask(std::bind(&WebServer::write, this, conn));
 }
 
+bool WebServer::InitListenSocket() {
+  int ret;
+  struct sockaddr_in addr;
+
+  if (port_ > 65535 || port_ < 1024) {
+    LOG_ERROR("Port:%d error!", port_);
+    return false;
+  }
+
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  addr.sin_port = htons(port_);
+
+  struct linger optLinger = {0};
+
+  if (use_linger_) {
+    /* 优雅关闭: 直到所剩数据发送完毕或超时 */
+    optLinger.l_onoff = 1;
+    optLinger.l_linger = 1;
+  }
+
+  listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
+  if (listen_fd_ < 0) {
+    LOG_ERROR("Create socket error!", port_);
+    return false;
+  }
+
+  ret = setsockopt(listen_fd_, SOL_SOCKET, SO_LINGER, &optLinger,
+                   sizeof(optLinger));
+  if (ret < 0) {
+    close(listen_fd_);
+    LOG_ERROR("Init linger error!", port_);
+    return false;
+  }
+
+  int optval = 1;
+  /* 端口复用 */
+  /* 只有最后一个套接字会正常接收数据。 */
+  ret = setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval,
+                   sizeof(int));
+  if (ret == -1) {
+    LOG_ERROR("set socket setsockopt error !");
+    close(listen_fd_);
+    return false;
+  }
+
+  ret = bind(listen_fd_, (struct sockaddr *)&addr, sizeof(addr));
+  if (ret < 0) {
+    LOG_ERROR("Bind Port:%d error!", port_);
+    close(listen_fd_);
+    return false;
+  }
+
+  ret = listen(listen_fd_, 6);
+  if (ret < 0) {
+    LOG_ERROR("Listen port:%d error!", port_);
+    close(listen_fd_);
+    return false;
+  }
+  ret = epoller_->AddFd(listen_fd_, listen_event_type_ | EPOLLIN);
+  if (ret == 0) {
+    LOG_ERROR("Add listen error!");
+    close(listen_fd_);
+    return false;
+  }
+  SetSocketNonBlocking(listen_fd_);
+  LOG_INFO("Server port:%d", port_);
+  return true;
+}
+
 /* 修改客户描述符事件类型 */
 void WebServer::ModClientFdEvent(HttpConnection *conn) {
   if (conn->Process()) {
-    epoller_->ModFd(conn->GetFd(), event_type_ | EPOLLOUT);
+    epoller_->ModFd(conn->GetFd(), conn_event_type_ | EPOLLOUT);
   } else {
-    epoller_->ModFd(conn->GetFd(), event_type_ | EPOLLIN);
+    epoller_->ModFd(conn->GetFd(), conn_event_type_ | EPOLLIN);
   }
 }
