@@ -27,7 +27,6 @@ void Log::write(int level, const char *format, ...) {
 
     snprintf(tail, 36, "%04d_%02d_%02d", sys_time->tm_year + 1900,
              sys_time->tm_mon + 1, sys_time->tm_mday);
-    printf("%s", tail);
 
     char filename[kLogNameLength];
     fill_n(tail, kLogNameLength, '\0');

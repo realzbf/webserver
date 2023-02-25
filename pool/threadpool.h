@@ -5,7 +5,7 @@
 #include <deque>
 #include <functional>
 #include <mutex>
-
+#include <queue>
 #include "sqlconnpool.h"
 
 class ThreadPool {

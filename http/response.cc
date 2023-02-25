@@ -72,7 +72,6 @@ void HttpResponse::MakeResponse(Buffer& buff) {
   */
   if (stat((resources_dir_ + path_).data(), &file_stat_) < 0 ||
       S_ISDIR(file_stat_.st_mode)) {
-    std::cout << resources_dir_ + path_ << std::endl;
     code_ = 404;
   }
   /* 判断文件权限
@@ -137,12 +136,13 @@ void HttpResponse::SetStateLine(Buffer& buff) {
 /* 设置响应头 */
 void HttpResponse::SetHeader(Buffer& buff) {
   buff.Append("Connection: ");
-  if (keep_alive_) {
-    buff.Append("keep-alive\r\n");
-    buff.Append("keep-alive: max=6, timeout=120\r\n");
-  } else {
-    buff.Append("close\r\n");
-  }
+  // if (keep_alive_) {
+  //   buff.Append("keep-alive\r\n");
+  //   buff.Append("keep-alive: max=6, timeout=120\r\n");
+  // } else {
+  //   buff.Append("close\r\n");
+  // }
+  buff.Append("close\r\n");
   buff.Append("Content-type: " + GetFileType() + "\r\n");
 }
 

@@ -38,7 +38,15 @@ int HttpConnection::GetPort() const { return addr_.sin_port; }
 int HttpConnection::GetFd() const { return fd_; };
 
 /* 关闭连接 */
-void HttpConnection::Close() {}
+void HttpConnection::Close() {
+    response_.UnmapFile();
+    if(closed_ == false){
+        closed_ = true; 
+        user_count_--;
+        close(fd_);
+        LOG_INFO("Client[%d](%s:%d) quit, UserCount:%d", fd_, GetIp(), GetPort(), (int)user_count_);
+    }
+}
 
 bool HttpConnection::Process() {
   request_.Init();
