@@ -35,8 +35,12 @@ bool Epoller::AddFd(int fd, uint32_t events) {
   epoll_event ev = {0};
   ev.data.fd = fd;
   ev.events = events;
-  int ret = epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &ev);
-  std::cout << errno << std::endl;
+  int ret = epoll_ctl(epfd_, EPOLL_CTL_ADD, fd, &ev);
+  // std::cout << errno << std::endl;
+  /* ENOENT = 2
+  op was EPOLL_CTL_MOD or EPOLL_CTL_DEL, and fd is not registered with this
+  epoll instance.
+  */
   return 0 == ret;
 }
 

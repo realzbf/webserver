@@ -1,30 +1,37 @@
 #include "webserver.h"
 
-WebServer::WebServer(int port, int trig_mode, int timeout_ms, bool use_linger,
+WebServer::WebServer(char* base_dir, int port, int trig_mode, int timeout_ms, bool use_linger,
                      int n_thread, bool log, int log_level, int log_queue_size)
     : port_(port),
       timeout_ms_(timeout_ms),
       use_linger_(use_linger),
       closed_(false),
       threadpool_(new ThreadPool(n_thread)),
-      epoller_(new Epoller()) {
-  resources_dir_ = getcwd(nullptr, 256);
+      epoller_(new Epoller())
+       {
+  // maybe memory leak
+  // resources_dir_ = getcwd(nullptr, 256);
+
+  strcpy(resources_dir_, base_dir);
   strncat(resources_dir_, "/resources/", 16);
+
   HttpConnection::user_count_ = 0;
   HttpConnection::resources_dir_ = resources_dir_;
+
+  if (log) {
+    Log::Instance()->Init(log_level, "./log", ".log", log_queue_size);
+  }
 
   InitEventType(trig_mode);
 
   if (!InitListenSocket()) {
     closed_ = true;
   }
-  if (log) {
-    Log::Instance()->Init(log_level, "./log", ".log", log_queue_size);
-    if (closed_) {
-      LOG_ERROR("========== Server init error!==========");
-    } else {
-      LOG_INFO("========== Server init ==========");
-    }
+
+  if (closed_) {
+    LOG_ERROR("========== Server init error!==========");
+  } else {
+    LOG_INFO("========== Server init ==========");
   }
 }
 

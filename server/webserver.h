@@ -19,7 +19,7 @@ class WebServer {
   static const int kMaxFd = 65536;
   int port_;
   int timeout_ms_;
-  char *resources_dir_;
+  char resources_dir_[128];
 
  private:
   uint32_t listen_event_type_, conn_event_type_;
@@ -43,7 +43,7 @@ class WebServer {
   bool InitListenSocket();
 
  public:
-  WebServer(int port, int trig_mode, int timeout_ms, bool use_linger_,
+  WebServer(char* base_dir, int port, int trig_mode, int timeout_ms, bool use_linger_,
             int n_thread, bool log, int log_level, int log_queue_size);
 
   ~WebServer();

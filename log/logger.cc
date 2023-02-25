@@ -104,7 +104,7 @@ void Log::AppendLogLevelTitle(int level) {
 
 void Log::Init(int level = 1, const char *path, const char *suffix,
                int queue_max_size) {
-  opened_ = false;
+  opened_ = true;
   level_ = level;
   if (queue_max_size > 0) {
     async_ = true;

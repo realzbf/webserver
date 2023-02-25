@@ -62,6 +62,7 @@ bool HttpConnection::Process() {
   // 响应头
   iov_[0].iov_base = const_cast<char*>(write_buffer_.NextReadable());
   iov_[0].iov_len = write_buffer_.GetReadableBytes();
+  n_iov_ = 1;
 
   // 响应内容
   if (response_.GetFileLength() > 0 && response_.GetFile()) {

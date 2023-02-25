@@ -21,8 +21,9 @@ bool HttpRequest::Parse(Buffer& buff) {
   // 有限状态机
   while (buff.GetReadableBytes() > 0 && state_ != FINISH) {
     // 未读的区间是read_pos到write_pos这一段
-    const char* line_end = std::search(
-        buff.NextReadable(), buff.NextWriteableConst(), kCrlf.cbegin(), kCrlf.cend());
+    const char* line_end =
+        std::search(buff.NextReadable(), buff.NextWriteableConst(),
+                    kCrlf.cbegin(), kCrlf.cend());
     // 取一行
     string line(buff.NextReadable(), line_end);
     // 根据当前状态匹配解析
@@ -56,13 +57,13 @@ bool HttpRequest::ParseRequestLine(const string& line) {
   std::regex patten("^([^ ]*) ([^ ]*) HTTP/([^ ]*)$");
   std::smatch subMatch;
   /* 取出请求类型、资源路径、HTTP版本*/
-  if (!regex_match(line, subMatch, patten)) return false;
-
+  if (!regex_match(line, subMatch, patten)) {
+    return false;
+    LOG_ERROR("RequestLine Error: %s", line.c_str());
+  }
   method_ = subMatch[1];
   path_ = subMatch[2];
   version_ = subMatch[3];
-
-  LOG_ERROR("RequestLine Error");
 
   /* 解析路径， 加上html后缀 */
   if (path_ == "/") {  // 根目录默认为index.html
@@ -70,7 +71,8 @@ bool HttpRequest::ParseRequestLine(const string& line) {
   } else if (kAvaiableHtml.find(path_) != kAvaiableHtml.end()) {
     path_ += ".html";
   } else
-    return false;  // 无效资源路径
+    ;
+  // return false;  // 无效资源路径
 
   state_ = HEADERS;
   return true;

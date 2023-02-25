@@ -50,7 +50,7 @@ HttpResponse::~HttpResponse() { UnmapFile(); }
 /* 初始化各参数 */
 void HttpResponse::Init(const string& resources_dir, string& path,
                         bool keep_alive, int code) {
-  assert(resources_dir_ != "");
+  assert(resources_dir != "");
   if (mmap_ptr) {
     UnmapFile();
   }
@@ -72,6 +72,7 @@ void HttpResponse::MakeResponse(Buffer& buff) {
   */
   if (stat((resources_dir_ + path_).data(), &file_stat_) < 0 ||
       S_ISDIR(file_stat_.st_mode)) {
+    std::cout << resources_dir_ + path_ << std::endl;
     code_ = 404;
   }
   /* 判断文件权限
